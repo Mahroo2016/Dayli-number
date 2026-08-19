@@ -1,0 +1,1214 @@
+name: Build APK V3
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build NumberDaily V3
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Create folders
+        run: |
+          mkdir -p app/src/main/java/com/example/numberdaily
+          mkdir -p app/src/main/res/values
+
+      - name: Create settings.gradle
+        run: |
+          cat > settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+
+          rootProject.name = "NumberDailyV3"
+          include ":app"
+          EOF
+
+      - name: Create build.gradle
+        run: |
+          cat > build.gradle <<'EOF'
+          plugins {
+              id "com.android.application" version "8.6.1" apply false
+          }
+          EOF
+
+      - name: Create app build.gradle
+        run: |
+          cat > app/build.gradle <<'EOF'
+          plugins {
+              id "com.android.application"
+          }
+
+          android {
+              namespace "com.example.numberdaily"
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId "com.example.numberdaily"
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 3
+                  versionName "3.0"
+              }
+          }
+          EOF
+
+      - name: Create theme
+        run: |
+          cat > app/src/main/res/values/themes.xml <<'EOF'
+          <resources>
+
+              <style
+                  name="Theme.NumberDaily"
+                  parent="android:style/Theme.Material.Light.NoActionBar">
+
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:colorAccent">#6750A4</item>
+                  <item name="android:navigationBarColor">#FFFFFF</item>
+                  <item name="android:statusBarColor">#FFFFFF</item>
+                  <item name="android:windowLightStatusBar">true</item>
+
+              </style>
+
+          </resources>
+          EOF
+
+      - name: Create AndroidManifest
+        run: |
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest
+              xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <application
+                  android:theme="@style/Theme.NumberDaily"
+                  android:label="ثبت روزانه"
+                  android:allowBackup="true"
+                  android:supportsRtl="true">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:screenOrientation="portrait"
+                      android:exported="true">
+
+                      <intent-filter>
+
+                          <action
+                              android:name="android.intent.action.MAIN" />
+
+                          <category
+                              android:name="android.intent.category.LAUNCHER" />
+
+                      </intent-filter>
+
+                  </activity>
+
+              </application>
+
+          </manifest>
+          EOF
+
+      - name: Create MainActivity
+        run: |
+          cat > app/src/main/java/com/example/numberdaily/MainActivity.java <<'EOF'
+          package com.example.numberdaily;
+
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.content.Context;
+          import android.content.SharedPreferences;
+          import android.os.Bundle;
+          import android.text.InputType;
+          import android.view.Gravity;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.widget.BaseAdapter;
+          import android.widget.Button;
+          import android.widget.EditText;
+          import android.widget.LinearLayout;
+          import android.widget.ListView;
+          import android.widget.TextView;
+          import android.widget.Toast;
+
+          import java.util.ArrayList;
+          import java.util.Calendar;
+          import java.util.Collections;
+          import java.util.Locale;
+
+          public class MainActivity extends Activity {
+
+              private SharedPreferences prefs;
+
+              private final ArrayList<Record> records =
+                      new ArrayList<>();
+
+              private TextView totalText;
+              private TextView daysText;
+              private TextView todayText;
+
+              private EditText numberInput;
+
+              private RecordAdapter adapter;
+
+
+              static class Record {
+
+                  String date;
+                  String value;
+
+                  Record(
+                          String date,
+                          String value
+                  ) {
+
+                      this.date = date;
+                      this.value = value;
+                  }
+              }
+
+
+              @Override
+              protected void onCreate(
+                      Bundle savedInstanceState
+              ) {
+
+                  super.onCreate(
+                          savedInstanceState
+                  );
+
+                  prefs =
+                          getSharedPreferences(
+                                  "NUMBER_DAILY_DATA",
+                                  MODE_PRIVATE
+                          );
+
+                  load();
+
+                  createScreen();
+
+                  refresh();
+              }
+
+
+              private TextView makeText(
+                      String text,
+                      float size
+              ) {
+
+                  TextView view =
+                          new TextView(this);
+
+                  view.setText(text);
+
+                  view.setTextSize(size);
+
+                  view.setPadding(
+                          12,
+                          10,
+                          12,
+                          10
+                  );
+
+                  return view;
+              }
+
+
+              private String persian(
+                      String value
+              ) {
+
+                  return value
+                          .replace("0", "۰")
+                          .replace("1", "۱")
+                          .replace("2", "۲")
+                          .replace("3", "۳")
+                          .replace("4", "۴")
+                          .replace("5", "۵")
+                          .replace("6", "۶")
+                          .replace("7", "۷")
+                          .replace("8", "۸")
+                          .replace("9", "۹");
+              }
+
+
+              /*
+               * Today's date in Persian calendar.
+               */
+              private String getToday() {
+
+                  Calendar calendar =
+                          Calendar.getInstance();
+
+                  int gy =
+                          calendar.get(
+                                  Calendar.YEAR
+                          );
+
+                  int gm =
+                          calendar.get(
+                                  Calendar.MONTH
+                          ) + 1;
+
+                  int gd =
+                          calendar.get(
+                                  Calendar.DAY_OF_MONTH
+                          );
+
+                  int[] gDays = {
+
+                          0,
+                          31,
+                          28,
+                          31,
+                          30,
+                          31,
+                          30,
+                          31,
+                          31,
+                          30,
+                          31,
+                          30,
+                          31
+                  };
+
+                  int gy2 =
+                          gy - 1600;
+
+                  int gm2 =
+                          gm - 1;
+
+                  int gd2 =
+                          gd - 1;
+
+                  int gDayNo =
+                          365 * gy2
+                                  + (gy2 + 3) / 4
+                                  - (gy2 + 99) / 100
+                                  + (gy2 + 399) / 400;
+
+                  for (
+                          int i = 0;
+                          i < gm2;
+                          i++
+                  ) {
+
+                      gDayNo +=
+                              gDays[i + 1];
+                  }
+
+                  if (
+                          gm2 > 1
+                                  &&
+                          (
+                                  (
+                                          gy % 4 == 0
+                                                  &&
+                                          gy % 100 != 0
+                                  )
+                                          ||
+                                  gy % 400 == 0
+                          )
+                  ) {
+
+                      gDayNo++;
+                  }
+
+                  gDayNo += gd2;
+
+                  int jDayNo =
+                          gDayNo - 79;
+
+                  int jNp =
+                          jDayNo / 12053;
+
+                  jDayNo %= 12053;
+
+                  int jy =
+                          979
+                                  + 33 * jNp
+                                  + 4 * (
+                                  jDayNo / 1461
+                          );
+
+                  jDayNo %= 1461;
+
+                  if (
+                          jDayNo >= 366
+                  ) {
+
+                      jy +=
+                              (
+                                      jDayNo - 1
+                              ) / 365;
+
+                      jDayNo =
+                              (
+                                      jDayNo - 1
+                              ) % 365;
+                  }
+
+                  int jm;
+                  int jd;
+
+                  if (
+                          jDayNo < 186
+                  ) {
+
+                      jm =
+                              1
+                                      + jDayNo / 31;
+
+                      jd =
+                              1
+                                      + jDayNo % 31;
+
+                  } else {
+
+                      jm =
+                              7
+                                      + (
+                                      jDayNo - 186
+                              ) / 30;
+
+                      jd =
+                              1
+                                      + (
+                                      jDayNo - 186
+                              ) % 30;
+                  }
+
+                  return String.format(
+                          Locale.US,
+                          "%04d/%02d/%02d",
+                          jy,
+                          jm,
+                          jd
+                  );
+              }
+
+
+              private void createScreen() {
+
+                  LinearLayout root =
+                          new LinearLayout(this);
+
+                  root.setOrientation(
+                          LinearLayout.VERTICAL
+                  );
+
+                  root.setPadding(
+                          16,
+                          16,
+                          16,
+                          12
+                  );
+
+
+                  TextView title =
+                          makeText(
+                                  "ثبت عدد روزانه",
+                                  27
+                          );
+
+                  title.setGravity(
+                          Gravity.CENTER
+                  );
+
+                  root.addView(title);
+
+
+                  todayText =
+                          makeText(
+                                  "",
+                                  17
+                          );
+
+                  todayText.setGravity(
+                          Gravity.CENTER
+                  );
+
+                  root.addView(todayText);
+
+
+                  totalText =
+                          makeText(
+                                  "",
+                                  24
+                          );
+
+                  totalText.setGravity(
+                          Gravity.CENTER
+                  );
+
+                  root.addView(totalText);
+
+
+                  daysText =
+                          makeText(
+                                  "",
+                                  17
+                          );
+
+                  daysText.setGravity(
+                          Gravity.CENTER
+                  );
+
+                  root.addView(daysText);
+
+
+                  numberInput =
+                          new EditText(this);
+
+                  numberInput.setHint(
+                          "عدد امروز"
+                  );
+
+                  numberInput.setSingleLine(
+                          true
+                  );
+
+                  numberInput.setInputType(
+                          InputType.TYPE_CLASS_NUMBER
+                                  |
+                          InputType.TYPE_NUMBER_FLAG_DECIMAL
+                  );
+
+                  root.addView(
+                          numberInput
+                  );
+
+
+                  Button save =
+                          new Button(this);
+
+                  save.setText(
+                          "ثبت عدد امروز"
+                  );
+
+                  root.addView(save);
+
+
+                  TextView listTitle =
+                          makeText(
+                                  "لیست کامل روزها",
+                                  20
+                          );
+
+                  listTitle.setGravity(
+                          Gravity.CENTER
+                  );
+
+                  root.addView(
+                          listTitle
+                  );
+
+
+                  ListView list =
+                          new ListView(this);
+
+                  adapter =
+                          new RecordAdapter(this);
+
+                  list.setAdapter(
+                          adapter
+                  );
+
+                  root.addView(
+                          list,
+                          new LinearLayout.LayoutParams(
+                                  -1,
+                                  0,
+                                  1
+                          )
+                  );
+
+
+                  Button reset =
+                          new Button(this);
+
+                  reset.setText(
+                          "ریست همه اطلاعات"
+                  );
+
+                  root.addView(
+                          reset
+                  );
+
+
+                  setContentView(
+                          root
+                  );
+
+
+                  save.setOnClickListener(
+                          v -> saveToday()
+                  );
+
+
+                  reset.setOnClickListener(
+                          v -> reset()
+                  );
+              }
+
+
+              private void saveToday() {
+
+                  String value =
+                          numberInput
+                                  .getText()
+                                  .toString()
+                                  .trim();
+
+                  if (
+                          value.isEmpty()
+                  ) {
+
+                      numberInput.setError(
+                              "عدد وارد کنید"
+                      );
+
+                      return;
+                  }
+
+
+                  try {
+
+                      Double.parseDouble(
+                              value
+                      );
+
+                  } catch (Exception e) {
+
+                      numberInput.setError(
+                              "عدد معتبر نیست"
+                      );
+
+                      return;
+                  }
+
+
+                  String today =
+                          getToday();
+
+                  boolean exists =
+                          false;
+
+
+                  /*
+                   * One record per day.
+                   * Re-entering today's number
+                   * updates today's record.
+                   */
+                  for (
+                          Record record :
+                          records
+                  ) {
+
+                      if (
+                              record.date.equals(
+                                      today
+                              )
+                      ) {
+
+                          record.value =
+                                  value;
+
+                          exists =
+                                  true;
+
+                          break;
+                      }
+                  }
+
+
+                  if (!exists) {
+
+                      records.add(
+                              new Record(
+                                      today,
+                                      value
+                              )
+                      );
+                  }
+
+
+                  sort();
+
+                  save();
+
+                  numberInput.setText("");
+
+                  refresh();
+
+
+                  Toast.makeText(
+                          this,
+                          exists
+                                  ? "عدد امروز اصلاح شد"
+                                  : "عدد امروز ثبت شد",
+                          Toast.LENGTH_SHORT
+                  ).show();
+              }
+
+
+              private void sort() {
+
+                  Collections.sort(
+                          records,
+                          (
+                                  first,
+                                  second
+                          ) ->
+                                  second.date.compareTo(
+                                          first.date
+                                  )
+                  );
+              }
+
+
+              private void refresh() {
+
+                  double sum =
+                          0;
+
+
+                  for (
+                          Record record :
+                          records
+                  ) {
+
+                      try {
+
+                          sum +=
+                                  Double.parseDouble(
+                                          record.value
+                                  );
+
+                      } catch (
+                              Exception ignored
+                      ) {
+                      }
+                  }
+
+
+                  String total;
+
+
+                  if (
+                          sum == Math.rint(sum)
+                  ) {
+
+                      total =
+                              String.valueOf(
+                                      (long) sum
+                              );
+
+                  } else {
+
+                      total =
+                              String.valueOf(
+                                      sum
+                              );
+                  }
+
+
+                  todayText.setText(
+                          "امروز: " +
+                                  persian(
+                                          getToday()
+                                  )
+                  );
+
+
+                  totalText.setText(
+                          "جمع کل همه روزها: " +
+                                  persian(
+                                          total
+                                  )
+                  );
+
+
+                  daysText.setText(
+                          "تعداد روزهای ثبت‌شده: " +
+                                  persian(
+                                          String.valueOf(
+                                                  records.size()
+                                          )
+                                  )
+                  );
+
+
+                  adapter.notifyDataSetChanged();
+              }
+
+
+              private void edit(
+                      int position
+              ) {
+
+                  Record record =
+                          records.get(
+                                  position
+                          );
+
+
+                  EditText edit =
+                          new EditText(this);
+
+                  edit.setSingleLine(
+                          true
+                  );
+
+                  edit.setInputType(
+                          InputType.TYPE_CLASS_NUMBER
+                                  |
+                          InputType.TYPE_NUMBER_FLAG_DECIMAL
+                  );
+
+                  edit.setText(
+                          record.value
+                  );
+
+                  edit.selectAll();
+
+
+                  new AlertDialog.Builder(
+                          this
+                  )
+
+                          .setTitle(
+                                  "اصلاح " +
+                                          persian(
+                                                  record.date
+                                          )
+                          )
+
+                          .setView(
+                                  edit
+                          )
+
+                          .setNegativeButton(
+                                  "لغو",
+                                  null
+                          )
+
+                          .setPositiveButton(
+                                  "ذخیره",
+                                  (
+                                          dialog,
+                                          which
+                                  ) -> {
+
+                                      String value =
+                                              edit
+                                                      .getText()
+                                                      .toString()
+                                                      .trim();
+
+                                      try {
+
+                                          Double.parseDouble(
+                                                  value
+                                          );
+
+                                          record.value =
+                                                  value;
+
+                                          save();
+
+                                          refresh();
+
+                                      } catch (
+                                              Exception e
+                                      ) {
+
+                                          Toast.makeText(
+                                                  this,
+                                                  "عدد معتبر نیست",
+                                                  Toast.LENGTH_SHORT
+                                          ).show();
+                                      }
+                                  }
+                          )
+
+                          .show();
+              }
+
+
+              private void delete(
+                      int position
+              ) {
+
+                  Record record =
+                          records.get(
+                                  position
+                          );
+
+
+                  new AlertDialog.Builder(
+                          this
+                  )
+
+                          .setTitle(
+                                  "حذف رکورد"
+                          )
+
+                          .setMessage(
+                                  "رکورد " +
+                                          persian(
+                                                  record.date
+                                          ) +
+                                          " حذف شود؟"
+                          )
+
+                          .setNegativeButton(
+                                  "لغو",
+                                  null
+                          )
+
+                          .setPositiveButton(
+                                  "حذف",
+                                  (
+                                          dialog,
+                                          which
+                                  ) -> {
+
+                                      records.remove(
+                                              position
+                                      );
+
+                                      save();
+
+                                      refresh();
+                                  }
+                          )
+
+                          .show();
+              }
+
+
+              private void reset() {
+
+                  new AlertDialog.Builder(
+                          this
+                  )
+
+                          .setTitle(
+                                  "ریست همه اطلاعات"
+                          )
+
+                          .setMessage(
+                                  "تمام روزها حذف شوند؟"
+                          )
+
+                          .setNegativeButton(
+                                  "لغو",
+                                  null
+                          )
+
+                          .setPositiveButton(
+                                  "ریست",
+                                  (
+                                          dialog,
+                                          which
+                                  ) -> {
+
+                                      records.clear();
+
+                                      save();
+
+                                      refresh();
+
+                                      Toast.makeText(
+                                              this,
+                                              "همه اطلاعات پاک شد",
+                                              Toast.LENGTH_SHORT
+                                      ).show();
+                                  }
+                          )
+
+                          .show();
+              }
+
+
+              private void load() {
+
+                  String data =
+                          prefs.getString(
+                                  "records",
+                                  ""
+                          );
+
+
+                  if (
+                          data.isEmpty()
+                  ) {
+
+                      return;
+                  }
+
+
+                  String[] rows =
+                          data.split(
+                                  "\\|"
+                          );
+
+
+                  for (
+                          String row :
+                          rows
+                  ) {
+
+                      String[] parts =
+                              row.split(
+                                      ",",
+                                      2
+                              );
+
+
+                      if (
+                              parts.length == 2
+                      ) {
+
+                          records.add(
+                                  new Record(
+                                          parts[0],
+                                          parts[1]
+                                  )
+                          );
+                      }
+                  }
+
+
+                  sort();
+              }
+
+
+              private void save() {
+
+                  StringBuilder data =
+                          new StringBuilder();
+
+
+                  for (
+                          Record record :
+                          records
+                  ) {
+
+                      if (
+                              data.length() > 0
+                      ) {
+
+                          data.append("|");
+                      }
+
+
+                      data.append(
+                              record.date
+                      );
+
+                      data.append(
+                              ","
+                      );
+
+                      data.append(
+                              record.value
+                      );
+                  }
+
+
+                  prefs.edit()
+                          .putString(
+                                  "records",
+                                  data.toString()
+                          )
+                          .apply();
+              }
+
+
+              class RecordAdapter
+                      extends BaseAdapter {
+
+                  private final Context context;
+
+
+                  RecordAdapter(
+                          Context context
+                  ) {
+
+                      this.context =
+                              context;
+                  }
+
+
+                  @Override
+                  public int getCount() {
+
+                      return records.size();
+                  }
+
+
+                  @Override
+                  public Object getItem(
+                          int position
+                  ) {
+
+                      return records.get(
+                              position
+                      );
+                  }
+
+
+                  @Override
+                  public long getItemId(
+                          int position
+                  ) {
+
+                      return position;
+                  }
+
+
+                  @Override
+                  public View getView(
+                          int position,
+                          View oldView,
+                          ViewGroup parent
+                  ) {
+
+                      LinearLayout row =
+                              new LinearLayout(
+                                      context
+                              );
+
+                      row.setOrientation(
+                              LinearLayout.HORIZONTAL
+                      );
+
+                      row.setGravity(
+                              Gravity.CENTER_VERTICAL
+                      );
+
+                      row.setPadding(
+                              3,
+                              4,
+                              3,
+                              4
+                      );
+
+
+                      Record record =
+                              records.get(
+                                      position
+                              );
+
+
+                      TextView info =
+                              makeText(
+                                      persian(
+                                              record.date
+                                      )
+                                              +
+                                      "  ←  "
+                                              +
+                                      persian(
+                                              record.value
+                                      ),
+                                      17
+                              );
+
+
+                      row.addView(
+                              info,
+                              new LinearLayout.LayoutParams(
+                                      0,
+                                      -2,
+                                      1
+                              )
+                      );
+
+
+                      Button edit =
+                              new Button(
+                                      context
+                              );
+
+                      edit.setText(
+                              "اصلاح"
+                      );
+
+                      row.addView(
+                              edit
+                      );
+
+
+                      Button delete =
+                              new Button(
+                                      context
+                              );
+
+                      delete.setText(
+                              "حذف"
+                      );
+
+                      row.addView(
+                              delete
+                      );
+
+
+                      final int p =
+                              position;
+
+
+                      edit.setOnClickListener(
+                              v ->
+                                      edit(p)
+                      );
+
+
+                      delete.setOnClickListener(
+                              v ->
+                                      delete(p)
+                      );
+
+
+                      return row;
+                  }
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NumberDaily-V3-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
