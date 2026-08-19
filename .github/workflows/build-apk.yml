@@ -8,14 +8,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
@@ -64,8 +67,8 @@ jobs:
                   applicationId "com.example.numberdaily"
                   minSdk 23
                   targetSdk 35
-                  versionCode 1
-                  versionName "1.0"
+                  versionCode 2
+                  versionName "2.0"
               }
           }
           EOF
@@ -76,6 +79,9 @@ jobs:
                   parent="android:style/Theme.Material.Light.NoActionBar">
                   <item name="android:fontFamily">sans</item>
                   <item name="android:colorAccent">#6750A4</item>
+                  <item name="android:navigationBarColor">#FFFFFF</item>
+                  <item name="android:statusBarColor">#FFFFFF</item>
+                  <item name="android:windowLightStatusBar">true</item>
               </style>
           </resources>
           EOF
@@ -86,7 +92,8 @@ jobs:
               <application
                   android:theme="@style/Theme.NumberDaily"
                   android:label="ثبت روزانه"
-                  android:allowBackup="true">
+                  android:allowBackup="true"
+                  android:supportsRtl="true">
 
                   <activity
                       android:name=".MainActivity"
@@ -108,25 +115,44 @@ jobs:
           cat > app/src/main/java/com/example/numberdaily/MainActivity.java <<'EOF'
           package com.example.numberdaily;
 
-          import android.app.*;
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.content.Context;
+          import android.content.SharedPreferences;
           import android.os.Bundle;
-          import android.content.*;
           import android.text.InputType;
-          import android.view.*;
-          import android.widget.*;
-          import java.text.SimpleDateFormat;
-          import java.util.*;
+          import android.view.Gravity;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.widget.ArrayAdapter;
+          import android.widget.BaseAdapter;
+          import android.widget.Button;
+          import android.widget.EditText;
+          import android.widget.LinearLayout;
+          import android.widget.ListView;
+          import android.widget.TextView;
+          import android.widget.Toast;
+
+          import java.util.ArrayList;
+          import java.util.Calendar;
+          import java.util.Collections;
+          import java.util.Locale;
 
           public class MainActivity extends Activity {
 
               SharedPreferences sp;
-              ArrayList<Record> records = new ArrayList<>();
+
+              ArrayList<Record> records =
+                      new ArrayList<>();
+
               EditText input;
               TextView totalView;
+              TextView countView;
               ListView list;
               RecordAdapter adapter;
 
               static class Record {
+
                   String date;
                   String value;
 
@@ -136,123 +162,321 @@ jobs:
                   }
               }
 
-              String today() {
-                  return new SimpleDateFormat(
-                      "yyyy/MM/dd",
-                      Locale.US
-                  ).format(new Date());
-              }
-
-              TextView label(String text, int size) {
-                  TextView t = new TextView(this);
-                  t.setText(text);
-                  t.setTextSize(size);
-                  t.setPadding(16, 12, 16, 12);
-                  return t;
-              }
-
               @Override
               public void onCreate(Bundle b) {
                   super.onCreate(b);
 
-                  sp = getSharedPreferences("data", MODE_PRIVATE);
+                  sp = getSharedPreferences(
+                          "data",
+                          MODE_PRIVATE
+                  );
 
                   load();
                   buildUi();
                   refresh();
               }
 
+              TextView label(
+                      String text,
+                      int size
+              ) {
+
+                  TextView t =
+                          new TextView(this);
+
+                  t.setText(text);
+                  t.setTextSize(size);
+                  t.setPadding(
+                          16,
+                          12,
+                          16,
+                          12
+                  );
+
+                  return t;
+              }
+
+              String persianDigits(String s) {
+
+                  return s
+                          .replace("0", "۰")
+                          .replace("1", "۱")
+                          .replace("2", "۲")
+                          .replace("3", "۳")
+                          .replace("4", "۴")
+                          .replace("5", "۵")
+                          .replace("6", "۶")
+                          .replace("7", "۷")
+                          .replace("8", "۸")
+                          .replace("9", "۹");
+              }
+
+              String today() {
+
+                  Calendar c =
+                          Calendar.getInstance();
+
+                  int gy =
+                          c.get(Calendar.YEAR);
+
+                  int gm =
+                          c.get(Calendar.MONTH) + 1;
+
+                  int gd =
+                          c.get(Calendar.DAY_OF_MONTH);
+
+                  int[] gDays = {
+                          0,
+                          31,
+                          28,
+                          31,
+                          30,
+                          31,
+                          30,
+                          31,
+                          31,
+                          30,
+                          31,
+                          30,
+                          31
+                  };
+
+                  int gy2 = gy - 1600;
+                  int gm2 = gm - 1;
+                  int gd2 = gd - 1;
+
+                  int gDayNo =
+                          365 * gy2
+                                  + (gy2 + 3) / 4
+                                  - (gy2 + 99) / 100
+                                  + (gy2 + 399) / 400;
+
+                  for (int i = 0; i < gm2; i++) {
+                      gDayNo += gDays[i + 1];
+                  }
+
+                  if (gm2 > 1 &&
+                          ((gy % 4 == 0 &&
+                                  gy % 100 != 0)
+                                  || (gy % 400 == 0))) {
+
+                      gDayNo++;
+                  }
+
+                  gDayNo += gd2;
+
+                  int jDayNo =
+                          gDayNo - 79;
+
+                  int jNp =
+                          jDayNo / 12053;
+
+                  jDayNo %= 12053;
+
+                  int jy =
+                          979
+                                  + 33 * jNp
+                                  + 4 * (jDayNo / 1461);
+
+                  jDayNo %= 1461;
+
+                  if (jDayNo >= 366) {
+
+                      jy +=
+                              (jDayNo - 1) / 365;
+
+                      jDayNo =
+                              (jDayNo - 1) % 365;
+                  }
+
+                  int jm;
+                  int jd;
+
+                  if (jDayNo < 186) {
+
+                      jm =
+                              1 + jDayNo / 31;
+
+                      jd =
+                              1 + jDayNo % 31;
+
+                  } else {
+
+                      jm =
+                              7
+                                      + (jDayNo - 186)
+                                      / 30;
+
+                      jd =
+                              1
+                                      + (jDayNo - 186)
+                                      % 30;
+                  }
+
+                  return String.format(
+                          Locale.US,
+                          "%04d/%02d/%02d",
+                          jy,
+                          jm,
+                          jd
+                  );
+              }
+
               void buildUi() {
 
-                  LinearLayout root = new LinearLayout(this);
-                  root.setOrientation(LinearLayout.VERTICAL);
-                  root.setPadding(20, 20, 20, 12);
+                  LinearLayout root =
+                          new LinearLayout(this);
 
-                  TextView title = label(
-                      "ثبت عدد روزانه",
-                      26
+                  root.setOrientation(
+                          LinearLayout.VERTICAL
                   );
 
-                  title.setGravity(Gravity.CENTER);
+                  root.setPadding(
+                          18,
+                          18,
+                          18,
+                          10
+                  );
+
+                  TextView title =
+                          label(
+                                  "ثبت عدد روزانه",
+                                  26
+                          );
+
+                  title.setGravity(
+                          Gravity.CENTER
+                  );
+
                   root.addView(title);
 
-                  totalView = label(
-                      "جمع کل: 0",
-                      21
+                  totalView =
+                          label(
+                                  "جمع کل: ۰",
+                                  22
+                          );
+
+                  totalView.setGravity(
+                          Gravity.CENTER
                   );
 
-                  totalView.setGravity(Gravity.CENTER);
                   root.addView(totalView);
 
-                  input = new EditText(this);
-                  input.setHint(
-                      "عدد امروز را وارد کنید"
+                  countView =
+                          label(
+                                  "تعداد روزهای ثبت‌شده: ۰",
+                                  16
+                          );
+
+                  countView.setGravity(
+                          Gravity.CENTER
                   );
+
+                  root.addView(countView);
+
+                  input =
+                          new EditText(this);
+
+                  input.setHint(
+                          "عدد امروز را وارد کنید"
+                  );
+
                   input.setSingleLine(true);
 
                   input.setInputType(
-                      InputType.TYPE_CLASS_NUMBER |
-                      InputType.TYPE_NUMBER_FLAG_DECIMAL
+                          InputType.TYPE_CLASS_NUMBER
+                                  | InputType.TYPE_NUMBER_FLAG_DECIMAL
                   );
 
                   root.addView(input);
 
-                  Button save = new Button(this);
+                  Button save =
+                          new Button(this);
+
                   save.setText(
-                      "ثبت / اصلاح امروز"
+                          "ثبت عدد امروز"
                   );
+
                   root.addView(save);
 
-                  Button reset = new Button(this);
+                  Button reset =
+                          new Button(this);
+
                   reset.setText(
-                      "ریست همه اطلاعات"
+                          "ریست همه اطلاعات"
                   );
+
                   root.addView(reset);
 
-                  list = new ListView(this);
+                  TextView listTitle =
+                          label(
+                                  "لیست روزهای ثبت‌شده",
+                                  19
+                          );
 
-                  adapter = new RecordAdapter(this);
+                  listTitle.setGravity(
+                          Gravity.CENTER
+                  );
+
+                  root.addView(listTitle);
+
+                  list =
+                          new ListView(this);
+
+                  adapter =
+                          new RecordAdapter(this);
 
                   list.setAdapter(adapter);
 
                   root.addView(
-                      list,
-                      new LinearLayout.LayoutParams(
-                          -1,
-                          0,
-                          1
-                      )
+                          list,
+                          new LinearLayout.LayoutParams(
+                                  -1,
+                                  0,
+                                  1
+                          )
                   );
 
                   setContentView(root);
 
                   save.setOnClickListener(
-                      v -> saveToday()
+                          v -> saveToday()
                   );
 
                   reset.setOnClickListener(
-                      v -> confirmReset()
+                          v -> confirmReset()
                   );
               }
 
               void saveToday() {
 
                   String value =
-                      input.getText().toString().trim();
+                          input
+                                  .getText()
+                                  .toString()
+                                  .trim();
 
                   if (value.isEmpty()) {
+
                       input.setError(
-                          "یک عدد وارد کنید"
+                              "یک عدد وارد کنید"
                       );
+
                       return;
                   }
 
                   try {
-                      Double.parseDouble(value);
-                  } catch (Exception e) {
-                      input.setError(
-                          "عدد معتبر وارد کنید"
+
+                      Double.parseDouble(
+                              value
                       );
+
+                  } catch (Exception e) {
+
+                      input.setError(
+                              "عدد معتبر وارد کنید"
+                      );
+
                       return;
                   }
 
@@ -263,23 +487,26 @@ jobs:
                   for (Record r : records) {
 
                       if (r.date.equals(d)) {
+
                           r.value = value;
+
                           found = true;
+
                           break;
                       }
                   }
 
                   if (!found) {
+
                       records.add(
-                          new Record(d, value)
+                              new Record(
+                                      d,
+                                      value
+                              )
                       );
                   }
 
-                  Collections.sort(
-                      records,
-                      (a, b) ->
-                          b.date.compareTo(a.date)
-                  );
+                  sortRecords();
 
                   save();
 
@@ -287,127 +514,185 @@ jobs:
 
                   refresh();
 
-                  Toast.makeText(
-                      this,
-                      "ثبت شد",
-                      Toast.LENGTH_SHORT
-                  ).show();
+                  if (found) {
+
+                      Toast.makeText(
+                              this,
+                              "عدد امروز اصلاح شد",
+                              Toast.LENGTH_SHORT
+                      ).show();
+
+                  } else {
+
+                      Toast.makeText(
+                              this,
+                              "عدد امروز ثبت شد",
+                              Toast.LENGTH_SHORT
+                      ).show();
+                  }
+              }
+
+              void sortRecords() {
+
+                  Collections.sort(
+                          records,
+                          (a, b) ->
+                                  b.date.compareTo(
+                                          a.date
+                                  )
+                  );
               }
 
               void confirmReset() {
 
                   new AlertDialog.Builder(this)
-                      .setTitle(
-                          "ریست همه اطلاعات"
-                      )
-                      .setMessage(
-                          "تمام رکوردها حذف شوند؟"
-                      )
-                      .setNegativeButton(
-                          "لغو",
-                          null
-                      )
-                      .setPositiveButton(
-                          "ریست",
-                          (d, w) -> {
 
-                              records.clear();
+                          .setTitle(
+                                  "ریست همه اطلاعات"
+                          )
 
-                              save();
+                          .setMessage(
+                                  "تمام روزهای ثبت‌شده حذف شوند؟"
+                          )
 
-                              refresh();
+                          .setNegativeButton(
+                                  "لغو",
+                                  null
+                          )
 
-                              Toast.makeText(
-                                  this,
-                                  "همه اطلاعات پاک شد",
-                                  Toast.LENGTH_SHORT
-                              ).show();
-                          }
-                      )
-                      .show();
+                          .setPositiveButton(
+                                  "ریست",
+                                  (d, w) -> {
+
+                                      records.clear();
+
+                                      save();
+
+                                      refresh();
+
+                                      Toast.makeText(
+                                              this,
+                                              "همه اطلاعات پاک شد",
+                                              Toast.LENGTH_SHORT
+                                      ).show();
+                                  }
+                          )
+
+                          .show();
               }
 
               void editRecord(int pos) {
 
-                  Record r = records.get(pos);
+                  Record r =
+                          records.get(pos);
 
                   EditText e =
-                      new EditText(this);
+                          new EditText(this);
 
                   e.setSingleLine(true);
 
                   e.setInputType(
-                      InputType.TYPE_CLASS_NUMBER |
-                      InputType.TYPE_NUMBER_FLAG_DECIMAL
+                          InputType.TYPE_CLASS_NUMBER
+                                  | InputType.TYPE_NUMBER_FLAG_DECIMAL
                   );
 
                   e.setText(r.value);
+
                   e.selectAll();
 
                   new AlertDialog.Builder(this)
-                      .setTitle(
-                          "اصلاح " + r.date
-                      )
-                      .setView(e)
-                      .setNegativeButton(
-                          "لغو",
-                          null
-                      )
-                      .setPositiveButton(
-                          "ذخیره",
-                          (d, w) -> {
 
-                              String v =
-                                  e.getText()
-                                   .toString()
-                                   .trim();
+                          .setTitle(
+                                  "اصلاح " +
+                                          persianDigits(
+                                                  r.date
+                                          )
+                          )
 
-                              try {
+                          .setView(e)
 
-                                  Double.parseDouble(v);
+                          .setNegativeButton(
+                                  "لغو",
+                                  null
+                          )
 
-                                  r.value = v;
+                          .setPositiveButton(
+                                  "ذخیره",
+                                  (d, w) -> {
 
-                                  save();
+                                      String v =
+                                              e.getText()
+                                                      .toString()
+                                                      .trim();
 
-                                  refresh();
+                                      try {
 
-                              } catch (Exception ex) {
+                                          Double.parseDouble(
+                                                  v
+                                          );
 
-                                  Toast.makeText(
-                                      this,
-                                      "عدد معتبر نیست",
-                                      Toast.LENGTH_SHORT
-                                  ).show();
-                              }
-                          }
-                      )
-                      .show();
+                                          r.value = v;
+
+                                          save();
+
+                                          refresh();
+
+                                          Toast.makeText(
+                                                  this,
+                                                  "اصلاح شد",
+                                                  Toast.LENGTH_SHORT
+                                          ).show();
+
+                                      } catch (Exception ex) {
+
+                                          Toast.makeText(
+                                                  this,
+                                                  "عدد معتبر نیست",
+                                                  Toast.LENGTH_SHORT
+                                          ).show();
+                                      }
+                                  }
+                          )
+
+                          .show();
               }
 
               void deleteRecord(int pos) {
 
                   new AlertDialog.Builder(this)
-                      .setTitle("حذف رکورد")
-                      .setMessage(
-                          "این رکورد حذف شود؟"
-                      )
-                      .setNegativeButton(
-                          "لغو",
-                          null
-                      )
-                      .setPositiveButton(
-                          "حذف",
-                          (d, w) -> {
 
-                              records.remove(pos);
+                          .setTitle(
+                                  "حذف رکورد"
+                          )
 
-                              save();
+                          .setMessage(
+                                  "این روز حذف شود؟"
+                          )
 
-                              refresh();
-                          }
-                      )
-                      .show();
+                          .setNegativeButton(
+                                  "لغو",
+                                  null
+                          )
+
+                          .setPositiveButton(
+                                  "حذف",
+                                  (d, w) -> {
+
+                                      records.remove(pos);
+
+                                      save();
+
+                                      refresh();
+
+                                      Toast.makeText(
+                                              this,
+                                              "حذف شد",
+                                              Toast.LENGTH_SHORT
+                                      ).show();
+                                  }
+                          )
+
+                          .show();
               }
 
               void refresh() {
@@ -417,25 +702,43 @@ jobs:
                   for (Record r : records) {
 
                       try {
-                          sum += Double.parseDouble(
-                              r.value
-                          );
+
+                          sum +=
+                                  Double.parseDouble(
+                                          r.value
+                                  );
+
                       } catch (Exception ignored) {
                       }
                   }
 
-                  String s;
+                  String total;
 
                   if (sum == Math.rint(sum)) {
-                      s = String.valueOf(
-                          (long) sum
-                      );
+
+                      total =
+                              String.valueOf(
+                                      (long) sum
+                              );
+
                   } else {
-                      s = String.valueOf(sum);
+
+                      total =
+                              String.valueOf(sum);
                   }
 
                   totalView.setText(
-                      "جمع کل: " + s
+                          "جمع کل: " +
+                                  persianDigits(total)
+                  );
+
+                  countView.setText(
+                          "تعداد روزهای ثبت‌شده: " +
+                                  persianDigits(
+                                          String.valueOf(
+                                                  records.size()
+                                          )
+                                  )
                   );
 
                   adapter.notifyDataSetChanged();
@@ -444,45 +747,41 @@ jobs:
               void load() {
 
                   String raw =
-                      sp.getString(
-                          "records",
-                          ""
-                      );
+                          sp.getString(
+                                  "records",
+                                  ""
+                          );
 
                   if (raw.isEmpty()) {
                       return;
                   }
 
                   for (
-                      String x :
-                      raw.split("\\|")
+                          String x :
+                          raw.split("\\|")
                   ) {
 
                       String[] p =
-                          x.split(",", 2);
+                              x.split(",", 2);
 
                       if (p.length == 2) {
 
                           records.add(
-                              new Record(
-                                  p[0],
-                                  p[1]
-                              )
+                                  new Record(
+                                          p[0],
+                                          p[1]
+                                  )
                           );
                       }
                   }
 
-                  Collections.sort(
-                      records,
-                      (a, b) ->
-                          b.date.compareTo(a.date)
-                  );
+                  sortRecords();
               }
 
               void save() {
 
                   StringBuilder b =
-                      new StringBuilder();
+                          new StringBuilder();
 
                   for (Record r : records) {
 
@@ -496,15 +795,15 @@ jobs:
                   }
 
                   sp.edit()
-                      .putString(
-                          "records",
-                          b.toString()
-                      )
-                      .apply();
+                          .putString(
+                                  "records",
+                                  b.toString()
+                          )
+                          .apply();
               }
 
               class RecordAdapter
-                  extends BaseAdapter {
+                      extends BaseAdapter {
 
                   Context c;
 
@@ -512,73 +811,99 @@ jobs:
                       this.c = c;
                   }
 
+                  @Override
                   public int getCount() {
                       return records.size();
                   }
 
+                  @Override
                   public Object getItem(int p) {
                       return records.get(p);
                   }
 
+                  @Override
                   public long getItemId(int p) {
                       return p;
                   }
 
+                  @Override
                   public View getView(
-                      int p,
-                      View oldView,
-                      ViewGroup parent
+                          int p,
+                          View oldView,
+                          ViewGroup parent
                   ) {
 
                       LinearLayout row =
-                          new LinearLayout(c);
+                              new LinearLayout(c);
+
+                      row.setOrientation(
+                              LinearLayout.HORIZONTAL
+                      );
 
                       row.setGravity(
-                          Gravity.CENTER_VERTICAL
+                              Gravity.CENTER_VERTICAL
                       );
 
                       row.setPadding(
-                          8, 6, 8, 6
+                              4,
+                              4,
+                              4,
+                              4
                       );
 
-                      TextView t = label(
-                          records.get(p).date +
-                          "   →   " +
-                          records.get(p).value,
-                          17
-                      );
+                      TextView t =
+                              label(
+                                      persianDigits(
+                                              records
+                                                      .get(p)
+                                                      .date
+                                      )
+                                              + "   ←   "
+                                              + persianDigits(
+                                              records
+                                                      .get(p)
+                                                      .value
+                                      ),
+                                      17
+                              );
 
                       row.addView(
-                          t,
-                          new LinearLayout.LayoutParams(
-                              0,
-                              -2,
-                              1
-                          )
+                              t,
+                              new LinearLayout.LayoutParams(
+                                      0,
+                                      -2,
+                                      1
+                              )
                       );
 
                       Button edit =
-                          new Button(c);
+                              new Button(c);
 
-                      edit.setText("اصلاح");
+                      edit.setText(
+                              "اصلاح"
+                      );
 
                       row.addView(edit);
 
                       Button del =
-                          new Button(c);
+                              new Button(c);
 
-                      del.setText("حذف");
+                      del.setText(
+                              "حذف"
+                      );
 
                       row.addView(del);
 
                       final int pos = p;
 
                       edit.setOnClickListener(
-                          v -> editRecord(pos)
+                              v ->
+                                      editRecord(pos)
                       );
 
                       del.setOnClickListener(
-                          v -> deleteRecord(pos)
+                              v ->
+                                      deleteRecord(pos)
                       );
 
                       return row;
@@ -593,5 +918,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NumberDaily-debug-apk
+          name: NumberDaily-v2-apk
           path: app/build/outputs/apk/debug/app-debug.apk
